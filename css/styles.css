@@ -5,14 +5,12 @@
 
 /* Font Family */
 body {
-    font-family: 'Noto Sans KR', sans-serif;
+    font-family: "Noto Sans KR", sans-serif;
 }
 
 /* Calendar Overrides */
 .fc {
-    background: white;
-    border-radius: 0.5rem;
-    /* rounded-lg */
+    /* Removed card styles from here to exclude toolbar */
     --fc-border-color: #e5e7eb;
     /* gray-200 */
     --fc-button-bg-color: #ffffff;
@@ -32,6 +30,31 @@ body {
     /* purple-50 */
 }
 
+/* Apply rounded corners & shadow ONLY to the grid (excluding toolbar) */
+.fc .fc-scrollgrid {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    background: white;
+    border: 1px solid #e5e7eb; /* Ensure border is visible */
+}
+/* Gray background for days not in current month */
+.fc-day-other .fc-daygrid-day-frame {
+    background-color: #f9fafb; /* gray-50 */
+}
+
+/* Calendar Header Styling */
+.fc-col-header-cell {
+    background-color: #ede9fe; /* purple-100 */
+    padding: 8px 0 !important;
+}
+
+/* Red Text for Sat/Sun Headers */
+.fc-col-header-cell.fc-day-sat,
+.fc-col-header-cell.fc-day-sun {
+    color: #dc2626 !important; /* red-600 */
+}
+
 .fc .fc-toolbar-title {
     font-size: 1.25rem;
     /* text-xl */
@@ -49,31 +72,75 @@ body {
 
 /* Background Events (Holidays) */
 .holiday-bg-event {
-    background-color: #fee2e2 !important;
-    /* red-100 */
-    opacity: 0.4;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background-color: #fef2f2 !important;
+    /* red-50 */
+    border: 1px solid #fee2e2 !important; 
+    color: transparent !important; /* Hide text in the middle */
+    opacity: 1 !important;
+    pointer-events: none;
 }
 
-/* Print Styles - Advanced */
-@media print {
+/* 
+   Calendar Customization for User Request 
+   - Red dates for Sat/Sun/Holidays
+   - 10px date font, BOLD
+   - 8px holiday name, Darker
+*/
 
+/* Date Number Font Size & Weight */
+.fc .fc-daygrid-day-number {
+    font-size: 10px !important;
+    padding: 2px 4px !important; 
+    font-weight: 800 !important; /* Extra Bold */
+    color: #1f2937; /* gray-800 default */
+}
+
+/* Red Dates for Sundays ("fc-day-sun"), Saturdays ("fc-day-sat"), and Holidays ("is-holiday") */
+.fc-day-sun .fc-daygrid-day-number,
+.fc-day-sat .fc-daygrid-day-number,
+.is-holiday .fc-daygrid-day-number {
+    color: #dc2626 !important; /* text-red-600 (darker red) */
+}
+
+/* Holiday Name (injected via JS) */
+.holiday-name {
+    font-size: 8px !important;
+    color: #374151; /* text-gray-700 */
+    font-weight: 700 !important;
+    margin-right: 4px;
+    display: inline-block;
+    /* Removed max-width truncation to show full text */
+}
+
+/* Ensure day top flex alignment */
+.fc-daygrid-day-top {
+    flex-direction: row !important;
+    justify-content: flex-end
+        !important; /* Put everything to right, but Since we order [Name] [Number], Name is left of Number */
+    align-items: center !important;
+    position: relative !important;
+    z-index: 5 !important; /* Ensure it's above background events */
+}
+
+/* Ensure background events stay below */
+.fc-daygrid-day-bg {
+    z-index: 1 !important;
+}
+@media print {
     /* Hide everything initially */
-    body>* {
+    body > * {
         display: none !important;
     }
 
     /* Only show the view container (Calendar) */
     /* Note: We move the #view-container to be top level during print or toggle visibility */
-    body>#app {
+    body > #app {
         display: block !important;
     }
 
-    #app>header,
-    #app>footer,
-    #app>#modal-container {
+    #app > header,
+    #app > footer,
+    #app > #modal-container {
         display: none !important;
     }
 

@@ -28,12 +28,12 @@
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-gray-700 text-sm font-bold mb-2">시작일</label>
-                    <input type="date" id="sched-start" required
+                    <input type="date" id="sched-start" min="2000-01-01" max="2100-12-31" required
                         class="w-full border rounded px-3 py-2 focus:ring-2 focus:ring-purple-500">
                 </div>
                 <div>
                     <label class="block text-gray-700 text-sm font-bold mb-2">종료일</label>
-                    <input type="date" id="sched-end" required
+                    <input type="date" id="sched-end" min="2000-01-01" max="2100-12-31" required
                         class="w-full border rounded px-3 py-2 focus:ring-2 focus:ring-purple-500">
                 </div>
             </div>
@@ -65,7 +65,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-600 mb-1">반복 종료일</label>
-                        <input type="date" id="sched-until" class="w-full text-sm border rounded px-2 py-1">
+                        <input type="date" id="sched-until" min="2000-01-01" max="2100-12-31" class="w-full text-sm border rounded px-2 py-1">
                     </div>
                     <p class="text-xs text-blue-600">⚠️ 저장 시 개별 일정이 생성됩니다.</p>
                 </div>
