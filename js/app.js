@@ -742,9 +742,9 @@ const App = {
          };
 
          // 2. School Info
-         // Prioritize full_name_kr if column exists (even if null), otherwise fallback to school_name (legacy)
-         const koName = (data.full_name_kr !== undefined) ? data.full_name_kr : data.school_name;
-         setVal('setting-school-name-kr', koName || '');
+         // The form now loads the "pure" school name from 'school_name' field.
+         // 'full_name_kr' is reserved for the concatenated display version used in the header/print.
+         setVal('setting-school-name-kr', data.school_name || '');
          
          setVal('setting-school-name-en', data.name_en || '');
          setVal('setting-school-level-kr', data.level_kr || '');
@@ -1442,13 +1442,27 @@ const App = {
         
         const schoolNameKR = getVal('setting-school-name-kr').trim();
         const schoolNameEN = getVal('setting-school-name-en').trim();
+        const schoolLevelKR = getVal('setting-school-level-kr');
+        const schoolLevelEN = getVal('setting-school-level-en');
 
         if (!schoolNameKR && !schoolNameEN) {
             alert('학교명(한글 또는 영문)을 입력해 주세요.');
             return;
         }
 
-        // Combine names for storage if both exist, otherwise use one available
+        // Validation: If Korean name exists, level must be selected
+        if (schoolNameKR && !schoolLevelKR) {
+            alert('학교급(초등학교/중학교/고등학교 등)을 꼭 선택해 주세요.');
+            return;
+        }
+
+        // 1. Construct full_name_kr (e.g. "포곡" + "고등학교" = "포곡고등학교")
+        const fullNameKR = schoolNameKR ? (schoolNameKR + schoolLevelKR) : '';
+
+        // Continue with display name for 'school_name' field
+        // USER REQUEST: school_name should store the "PURE" name.
+        const pureName = schoolNameKR; 
+        
         let displayName = schoolNameKR;
         if (schoolNameKR && schoolNameEN) {
             displayName = `${schoolNameKR} (${schoolNameEN})`;
@@ -1456,17 +1470,8 @@ const App = {
             displayName = schoolNameEN;
         }
 
-        const schoolInfo = {
-            full_name_kr: schoolNameKR,
-            name_en: schoolNameEN,
-            level_kr: getVal('setting-school-level-kr'),
-            level_en: getVal('setting-school-level-en')
-        };
-
         const academicYear = parseInt(document.getElementById('setting-academic-year').value);
 
-        // We save school info into the 'settings' table. 
-        // We preserve detailed inputs in 'schedule_data' jsonb column to reload them correctly.
         const { data: existing } = await window.SupabaseClient.supabase
             .from('settings')
             .select('id')
@@ -1475,10 +1480,11 @@ const App = {
 
         const payload = {
             academic_year: academicYear,
-            school_name: displayName,
+            school_name: pureName, // Store pure name as requested
+            full_name_kr: fullNameKR, // Store concatenated version for display
             name_en: schoolNameEN,
-            level_kr: getVal('setting-school-level-kr'),
-            level_en: getVal('setting-school-level-en')
+            level_kr: schoolLevelKR,
+            level_en: schoolLevelEN
         };
 
         if(existing) payload.id = existing.id;
@@ -2081,7 +2087,9 @@ const App = {
                 month: '월',
                 list: '목록'
             },
-            height: '100%',
+            contentHeight: 'auto', // Adjust height to content, do not stretch
+            // height: '100%', // REMOVED: Caused unwanted vertical stretching
+            expandRows: false, // Do not force rows to fill vertical space
             dayMaxEvents: false,
             weekends: false, 
             firstDay: 1, // Start on Monday
@@ -2089,6 +2097,7 @@ const App = {
             // Dynamic Fetching on View Change
             datesSet: async (info) => {
                 await this.refreshCalendarData(info.start, info.end);
+                this.distributeVerticalSpace();
             },
 
             // Custom Classes for Red Dates
@@ -2110,10 +2119,21 @@ const App = {
             dayCellContent: (arg) => {
                 return this.renderCalendarCell(arg);
             },
+            
+            dayCellDidMount: (arg) => {
+                // Remove default FullCalendar containers that might cause whitespace or layout issues
+                const eventsContainer = arg.el.querySelector('.fc-daygrid-day-events');
+                // const bottomContainer = arg.el.querySelector('.fc-daygrid-day-bottom'); // KEEP: Used for spacing
+                const topContainer = arg.el.querySelector('.fc-daygrid-day-top'); // Original date header
+                if (eventsContainer) eventsContainer.remove();
+                // if (bottomContainer) bottomContainer.remove();
+                if (topContainer) topContainer.remove();
+            },
 
             windowResize: (view) => {
                 if (window.innerWidth < 768) calendar.changeView('listWeek');
                 else calendar.changeView('dayGridMonth');
+                this.distributeVerticalSpace();
             },
             dateClick: (info) => {
                 this.openScheduleModal(null, info.dateStr);
@@ -2124,7 +2144,10 @@ const App = {
         calendar.render();
         
         // Force size update for flexbox environments
-        setTimeout(() => calendar.updateSize(), 0);
+        setTimeout(() => {
+             calendar.updateSize();
+             this.distributeVerticalSpace();
+        }, 0);
 
         // 4. Weekend Toggle Initialization
         const weekendChk = document.getElementById('chk-show-weekends');
@@ -2783,12 +2806,22 @@ const App = {
         };
     },
 
-    executePrint: function (size, orient, isScale, viewType) {
+    executePrint: async function (size, orient, isScale, viewType) {
         this.closeModal();
 
-        // 1. Prepare View
+        // 1. Fetch School Settings for Header
+        let schoolDisplayName = '';
+        try {
+            const settings = await this.fetchSettings(this.state.currentYear);
+            if (settings) {
+                schoolDisplayName = settings.full_name_kr || settings.school_name || settings.name_en || '';
+            }
+        } catch (e) {
+            console.warn("Failed to fetch settings for print header", e);
+        }
+
+        // 2. Prepare View
         if (this.state.calendar) {
-            // Switch view if needed (e.g. to List view)
             if (viewType === 'list') {
                 this.state.calendar.changeView('listMonth');
             } else {
@@ -2796,25 +2829,61 @@ const App = {
             }
         }
 
-        // 2. Apply Classes to Body
+        // 3. Inject Print-Only Header (Directly to Body to avoid layout inheritance)
+        let printHeader = document.querySelector('.print-only-header');
+        if (!printHeader) {
+            printHeader = document.createElement('div');
+            printHeader.className = 'print-only-header';
+            document.body.prepend(printHeader);
+        }
+
+        const calendarTitle = document.querySelector('.fc-toolbar-title')?.textContent || '';
+        printHeader.innerHTML = `
+            <div class="print-header-left">${calendarTitle}</div>
+            <div class="print-header-right">${schoolDisplayName}</div>
+        `;
+
+        // 4. Apply Classes to Body
         const body = document.body;
         const previousClasses = body.className;
 
         body.classList.add('printing-mode');
-        body.classList.add(`print-${orient}`);
         body.classList.add(`print-${size.toLowerCase()}`);
         if (isScale) body.classList.add('print-scale');
 
-        // 3. Print
+        // 5. Inject @page Style Dynamically
+        const styleId = 'print-page-style';
+        let styleEl = document.getElementById(styleId);
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = styleId;
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = `@page { size: ${size} ${orient}; margin: 10mm; }`;
+
+        // 6. Force Layout Update & Automatic Height for Print
+        // This is critical to prevent the calendar from collapsing to 0 height in print
+        if (this.state.calendar) {
+            this.state.calendar.setOption('height', 'auto');
+            this.state.calendar.updateSize();
+        }
+
+        // 7. Print with sufficient delay for reflow
         setTimeout(() => {
             window.print();
-        }, 500);
+        }, 1000);
 
         const cleanup = () => {
-            body.className = previousClasses; // Restore
-            // Restore calendar view if needed
-            if (this.state.calendar && viewType === 'list') {
-                this.state.calendar.changeView(window.innerWidth < 768 ? 'listWeek' : 'dayGridMonth');
+            body.className = previousClasses; 
+            if (styleEl) styleEl.remove();
+            if (printHeader) printHeader.remove();
+
+            if (this.state.calendar) {
+                this.state.calendar.setOption('height', '100%');
+                if (viewType === 'list') {
+                    this.state.calendar.changeView(window.innerWidth < 768 ? 'listWeek' : 'dayGridMonth');
+                }
+                this.state.calendar.updateSize();
             }
             window.removeEventListener('afterprint', cleanup);
         };
@@ -3607,8 +3676,8 @@ const App = {
         const data = this.state.calendarData || { holidayMap: {}, redDayMap: {}, scheduleMap: {}, departments: [] };
 
         const container = document.createElement('div');
-        container.className = "flex flex-col w-full justify-start items-stretch flex-grow";
-        container.style.height = "100%"; // Explicitly set height for sticky track
+        container.className = "flex flex-col w-full justify-start items-stretch"; // Removed flex-grow
+        // container.style.height = "100%"; // REMOVED: Do not force full height
         
         // MASKING: Ensure the whole cell is opaque white (or today color) to hide FullCalendar background events
         // This reinforces the "color restricted to header" rule.
@@ -3671,7 +3740,7 @@ const App = {
         headerRow.appendChild(dateWrapper);
 
         // 2. Holiday Names (Right)
-        if (data.holidayMap[dateStr]) {
+        if (data.holidayMap[dateStr] || arg.isToday) {
             const nameContainer = document.createElement('div');
             nameContainer.className = 'fc-daygrid-holiday-wrapper'; // Add separate class
             nameContainer.style.overflow = 'hidden'; 
@@ -3679,42 +3748,57 @@ const App = {
             nameContainer.style.lineHeight = '1.2';
             nameContainer.style.paddingTop = '1px'; 
             nameContainer.style.marginRight = '4px';
+
+            // Add (오늘) Label
+            if (arg.isToday) {
+                const todaySpan = document.createElement('span');
+                todaySpan.style.display = 'inline-block';
+                todaySpan.style.fontSize = '10px';
+                todaySpan.style.fontWeight = 'bold';
+                todaySpan.style.color = '#2563eb'; // Blue-600
+                todaySpan.style.marginRight = '4px';
+                todaySpan.textContent = '(오늘)';
+                nameContainer.appendChild(todaySpan);
+            }
             
-            data.holidayMap[dateStr].forEach((name, index) => {
-                const itemSpan = document.createElement('span');
-                itemSpan.style.display = 'inline-block';
-                itemSpan.style.fontSize = '10px';
-                itemSpan.style.wordBreak = 'keep-all';
-                itemSpan.style.position = 'relative'; 
-                if (index > 0) itemSpan.style.marginLeft = '4px';
-                
-                itemSpan.className = "holiday-name"; 
-                itemSpan.textContent = name;
-                
-                if (index < data.holidayMap[dateStr].length - 1) {
-                    const commaSpan = document.createElement('span');
-                    commaSpan.textContent = ',';
-                    commaSpan.style.position = 'absolute';
-                    commaSpan.style.right = '-4px';
-                    commaSpan.style.top = '0';
-                    itemSpan.appendChild(commaSpan);
-                }
-                nameContainer.appendChild(itemSpan);
-            });
-            nameContainer.title = data.holidayMap[dateStr].join(', '); 
+            if (data.holidayMap[dateStr]) {
+                data.holidayMap[dateStr].forEach((name, index) => {
+                    const itemSpan = document.createElement('span');
+                    itemSpan.style.display = 'inline-block';
+                    itemSpan.style.fontSize = '10px';
+                    itemSpan.style.wordBreak = 'keep-all';
+                    itemSpan.style.position = 'relative'; 
+                    if (index > 0) itemSpan.style.marginLeft = '4px';
+                    
+                    itemSpan.className = "holiday-name"; 
+                    itemSpan.textContent = name;
+                    
+                    if (index < data.holidayMap[dateStr].length - 1) {
+                        const commaSpan = document.createElement('span');
+                        commaSpan.textContent = ',';
+                        commaSpan.style.position = 'absolute';
+                        commaSpan.style.right = '-4px';
+                        commaSpan.style.top = '0';
+                        itemSpan.appendChild(commaSpan);
+                    }
+                    nameContainer.appendChild(itemSpan);
+                });
+                nameContainer.title = data.holidayMap[dateStr].join(', '); 
+            }
             headerRow.appendChild(nameContainer);
         } else {
             headerRow.appendChild(document.createElement('div'));
         }
 
         headerGroup.appendChild(headerRow);
-
-        // Add Dashed Divider (Inside the colored group)
+ 
+        // 3. Add Dashed Divider (Always visible in all views)
         const divider = document.createElement('div');
+        divider.className = 'calendar-dashed-divider';
         divider.style.margin = '1px 8px 0px 8px'; // Bottom margin is 0 here to keep color inside
         divider.style.borderTop = '1px dashed #d1d5db'; // gray-300
-        
         headerGroup.appendChild(divider);
+
         container.appendChild(headerGroup);
 
         if (data.scheduleMap[dateStr]) {
@@ -3727,17 +3811,21 @@ const App = {
 
             sortedDeptIds.forEach((deptId, idx) => {
                 const group = groups[deptId];
+                const hasPrintableInDept = group.events.some(ev => ev.extendedProps.isPrintable !== false);
                 
                 // Add spacer between different departments
                 if (idx > 0) {
                     const spacer = document.createElement('div');
                     spacer.style.height = '12px';
+                    // Hide spacer if the following department has no printable content
+                    if (!hasPrintableInDept) spacer.classList.add('no-print');
                     container.appendChild(spacer);
                 }
 
                 const deptDiv = document.createElement('div');
                 deptDiv.className = "w-full text-left mb-1 pl-1";
                 deptDiv.style.fontSize = '10px';
+                if (!hasPrintableInDept) deptDiv.classList.add('no-print');
                 
                 const deptHeader = document.createElement('div');
                 deptHeader.className = "font-bold mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis";
@@ -3749,16 +3837,48 @@ const App = {
 
                 group.events.forEach(ev => {
                     const evDiv = document.createElement('div');
-                    evDiv.className = "cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 break-words";
+                    evDiv.className = "cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 break-words flex items-start leading-tight";
                     evDiv.style.fontSize = '10px';
                     evDiv.style.color = '#374151'; // Explicitly set dark grey color
+
+                    // Hide non-printable event during printing
+                    if (ev.extendedProps.isPrintable === false) {
+                        evDiv.classList.add('no-print');
+                    }
                     
-                    const displayTitle = (ev.extendedProps && ev.extendedProps.description)
+                    const canEdit = this.state.role === 'admin' || this.state.role === 'head_teacher' || this.state.role === 'head';
+                    
+                    if (canEdit) {
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'no-print mt-0.5 mr-1 h-3 w-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0';
+                        checkbox.checked = ev.extendedProps.isPrintable !== false;
+                        
+                        checkbox.onclick = async (e) => {
+                            e.stopPropagation();
+                            const newValue = e.target.checked;
+                            
+                            // Optimistic update
+                            ev.extendedProps.isPrintable = newValue;
+                            
+                            // DB Update (Fire & Forget style for speed, validation via Supabase usually reliable)
+                            await window.SupabaseClient.supabase
+                                .from('schedules')
+                                .update({ is_printable: newValue })
+                                .eq('id', ev.id);
+                        };
+                        
+                        evDiv.appendChild(checkbox);
+                    }
+
+                    const textSpan = document.createElement('span');
+                    const titleText = (ev.extendedProps && ev.extendedProps.description)
                         ? `· ${ev.title}(${ev.extendedProps.description})` 
                         : `· ${ev.title}`;
+                    textSpan.textContent = titleText;
+                    evDiv.appendChild(textSpan);
                     
-                    evDiv.textContent = displayTitle; 
-                    evDiv.title = displayTitle;
+                    evDiv.title = titleText;
                     evDiv.onclick = (e) => {
                         e.stopPropagation();
                         this.openScheduleModal(ev.id);
@@ -3772,6 +3892,54 @@ const App = {
     },
 
     // --- Logging System ---
+
+    distributeVerticalSpace: function() {
+        requestAnimationFrame(() => {
+            const calendarEl = document.querySelector('#calendar');
+            if (!calendarEl) return;
+
+            // 1. Reset bottom heights to 0 to measure natural content height
+            const bottomEls = calendarEl.querySelectorAll('.fc-daygrid-day-bottom');
+            bottomEls.forEach(el => el.style.height = '0px');
+
+            // 2. Measure Heights
+            const windowHeight = window.innerHeight;
+            const navbar = document.querySelector('nav'); 
+            const footer = document.querySelector('footer'); // Assuming there is a footer tag
+            const toolbar = document.querySelector('.fc-header-toolbar');
+            const colHeader = document.querySelector('.fc-col-header');
+            
+            const navH = navbar ? navbar.offsetHeight : 0;
+            const footH = footer ? footer.offsetHeight : 0;
+            const toolH = toolbar ? toolbar.offsetHeight : 0;
+            const headH = colHeader ? colHeader.offsetHeight : 0;
+            
+            // Get calendar rows to sum up actual content height
+            const rows = document.querySelectorAll('.fc-daygrid-body table tr');
+            if (rows.length === 0) return;
+            
+            let contentH = 0;
+            rows.forEach(row => {
+                 contentH += row.offsetHeight;
+            });
+            
+            // 3. Calculate Remainder
+            // Margin buffer INCREASED (from 200 to 210) to act conservatively and avoid overflow
+            const occupied = navH + footH + toolH + headH + contentH + 210; 
+            const remainder = windowHeight - occupied;
+
+            // 4. Distribute if positive
+            if (remainder > 0) {
+                const rowCount = rows.length;
+                // Floor the value to ensure we don't exceed available space due to sub-pixel rendering
+                const heightPerWeek = Math.floor(remainder / rowCount);
+
+                bottomEls.forEach(el => {
+                    el.style.height = `${Math.max(0, heightPerWeek)}px`;
+                });
+            }
+        });
+    },
 
     logAction: async function (action, table, targetId, details) {
         if (!this.state.user) return;
