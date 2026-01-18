@@ -325,6 +325,16 @@ const App = {
                 console.error("Failed to load list view", e);
                 container.innerHTML = `<p class="text-red-500">목록 로딩 실패</p>`;
             }
+        } else if (viewName === 'dept_list') {
+            try {
+                const response = await fetch('pages/dept-list.html');
+                const html = await response.text();
+                container.innerHTML = html;
+                this.initDeptListView();
+            } catch (e) {
+                console.error("Failed to load dept list view", e);
+                container.innerHTML = `<p class="text-red-500">부서별 보기 로딩 실패</p>`;
+            }
         } else if (viewName === 'login') {
             try {
                 const response = await fetch('pages/login.html');
@@ -2119,6 +2129,12 @@ const App = {
                         this.state.calendar.gotoDate(target);
                     }
                 },
+                customDept: {
+                    text: '부서별',
+                    click: () => {
+                        this.navigate('dept_list');
+                    }
+                },
                 customList: {
                     text: '목록',
                     click: () => {
@@ -2129,7 +2145,7 @@ const App = {
             headerToolbar: {
                 left: 'customPrev,customNext today',
                 center: 'title',
-                right: 'extendedMonth,customList' // Use our custom button
+                right: 'extendedMonth,customDept,customList' // Use our custom buttons
             },
             height: '100%', // Fill container for interior scroll on screen
             expandRows: true, // Stretch rows to fill available space (memo space)
@@ -2777,6 +2793,164 @@ const App = {
 
     },
 
+    // --- Dept List View ---
+
+    initDeptListView: async function () {
+        if (!this.state.deptViewDate) {
+            const today = new Date();
+            this.state.deptViewDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        }
+        const date = this.state.deptViewDate;
+        const mm = date.getMonth() + 1;
+        const y = date.getFullYear();
+        const ay = (mm < 3) ? y - 1 : y;
+
+        this.state.currentSettings = await this.fetchSettings(ay);
+        this.state.departments = await this.fetchDepartments(ay);
+
+        const btnPrev = document.getElementById('btn-dept-prev');
+        const btnNext = document.getElementById('btn-dept-next');
+        const btnToday = document.getElementById('btn-dept-today');
+        const btnPrint = document.getElementById('btn-dept-print');
+
+        if (btnPrev) btnPrev.onclick = () => {
+            const current = new Date(this.state.deptViewDate);
+            current.setMonth(current.getMonth() - 1);
+            this.state.deptViewDate = current;
+            this.initDeptListView();
+        };
+        if (btnNext) btnNext.onclick = () => {
+            const current = new Date(this.state.deptViewDate);
+            current.setMonth(current.getMonth() + 1);
+            this.state.deptViewDate = current;
+            this.initDeptListView();
+        };
+        if (btnToday) btnToday.onclick = () => {
+            const t = new Date();
+            this.state.deptViewDate = new Date(t.getFullYear(), t.getMonth(), 1);
+            this.initDeptListView();
+        };
+        if (btnPrint) btnPrint.onclick = () => this.openPrintModal('dept_list');
+
+        const selYear = document.getElementById('dept-nav-year');
+        const selMonth = document.getElementById('dept-nav-month');
+        if (selYear && selMonth) {
+            const currYear = new Date().getFullYear();
+            selYear.innerHTML = '';
+            for (let y = currYear - 2; y <= currYear + 2; y++) {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = `${y}년`;
+                selYear.appendChild(opt);
+            }
+            selMonth.innerHTML = '';
+            for (let m = 1; m <= 12; m++) {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = `${m}월`;
+                selMonth.appendChild(opt);
+            }
+            selYear.onchange = () => {
+                this.state.deptViewDate = new Date(parseInt(selYear.value), parseInt(selMonth.value) - 1, 1);
+                this.initDeptListView();
+            };
+            selMonth.onchange = () => {
+                this.state.deptViewDate = new Date(parseInt(selYear.value), parseInt(selMonth.value) - 1, 1);
+                this.initDeptListView();
+            };
+        }
+        this.renderDeptListView();
+    },
+
+    renderDeptListView: async function () {
+        const thead = document.getElementById('dept-view-thead');
+        const tbody = document.getElementById('dept-view-tbody');
+        const selYear = document.getElementById('dept-nav-year');
+        const selMonth = document.getElementById('dept-nav-month');
+        const wrapper = document.getElementById('dept-view-table-scroll');
+
+        if (!thead || !tbody) return;
+
+        const date = this.state.deptViewDate;
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        if (selYear) selYear.value = year;
+        if (selMonth) selMonth.value = month + 1;
+
+        const activeDepts = (this.state.departments || []).filter(d => d.is_active);
+        
+        // Populate Print Header
+        const printRange = document.getElementById('dept-print-range');
+        const printSchool = document.getElementById('dept-print-school');
+        const startOfMonth = new Date(year, month, 1);
+        const endOfMonth = new Date(year, month + 1, 0);
+
+        if (printRange) {
+            printRange.textContent = `${this.formatLocal(startOfMonth)} ~ ${this.formatLocal(endOfMonth)}`;
+        }
+        if (printSchool) {
+            const s = this.state.currentSettings;
+            printSchool.textContent = s ? (s.full_name_kr || s.school_name || "") : "";
+        }
+        
+        // 1. Header
+        let headerHtml = `<tr><th class="col-date">날짜</th>`;
+        activeDepts.forEach(d => {
+            const color = d.dept_color || '#ccc';
+            headerHtml += `
+                <th class="col-dept" style="padding: 0 4px; vertical-align: middle; box-shadow: inset 0 -5px 0 ${color}; height: 50px;">
+                    <div>${d.dept_name}</div>
+                </th>`;
+        });
+        headerHtml += `</tr>`;
+        thead.innerHTML = headerHtml;
+
+        // 2. Data
+        const startStr = this.formatLocal(startOfMonth);
+        const endStr = this.formatLocal(endOfMonth);
+
+        const { data: schedules } = await window.SupabaseClient.supabase
+            .from('schedules')
+            .select('*')
+            .gte('start_date', startStr)
+            .lte('start_date', endStr);
+
+        const mm = month + 1;
+        const ay = (mm < 3) ? year - 1 : year;
+        const holidays = this.calculateMergedHolidays(ay);
+
+        let bodyHtml = '';
+        const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+        for (let d = 1; d <= endOfMonth.getDate(); d++) {
+            const currDate = new Date(year, month, d);
+            const dateStr = this.formatLocal(currDate);
+            const dayNum = currDate.getDay();
+            const holidayName = holidays[dateStr];
+            
+            let rowClass = '';
+            if (dayNum === 0) rowClass = 'row-sunday';
+            else if (dayNum === 6) rowClass = 'row-saturday';
+            if (holidayName) rowClass = 'row-holiday';
+
+            bodyHtml += `<tr class="${rowClass}">`;
+            bodyHtml += `<td class="col-date">${d}<br><span class="text-[10px]">${dayNames[dayNum]}</span></td>`;
+            activeDepts.forEach(dept => {
+                const deptSchedules = (schedules || []).filter(s => s.dept_id === dept.id && s.start_date === dateStr);
+                bodyHtml += `<td class="col-dept">`;
+                deptSchedules.forEach(s => {
+                    const desc = s.description ? ` (${s.description})` : '';
+                    bodyHtml += `<div class="dept-event-item" style="border-left-color: ${dept.dept_color}">${s.title}${desc}</div>`;
+                });
+                bodyHtml += `</td>`;
+            });
+            bodyHtml += `</tr>`;
+        }
+        tbody.innerHTML = bodyHtml;
+
+        // Reset scroll position on month change
+        if (wrapper) wrapper.scrollTop = 0;
+    },
+
     // --- Data Fetching ---
 
     fetchSettings: async function (targetYear = null) {
@@ -3401,6 +3575,20 @@ const App = {
                 if (orientSelect) orientSelect.value = 'portrait';
                 const sizeSelect = document.getElementById('print-size');
                 if (sizeSelect) sizeSelect.value = 'A4';
+            } else if (mode === 'dept_list') {
+                const viewInput = document.querySelector('input[name="print-view"]');
+                if (viewInput) viewInput.value = 'dept_list';
+                
+                const viewTitle = document.getElementById('print-view-title'); 
+                if (viewTitle) viewTitle.textContent = '부서별 일정 (월간)';
+
+                const viewIcon = document.getElementById('print-view-icon');
+                if (viewIcon) viewIcon.textContent = 'table_view';
+
+                const orientSelect = document.getElementById('print-orient');
+                if (orientSelect) orientSelect.value = 'landscape';
+                const sizeSelect = document.getElementById('print-size');
+                if (sizeSelect) sizeSelect.value = 'B4';
             }
         } catch (e) {
             console.error("Failed to load print modal", e);
@@ -3440,8 +3628,8 @@ const App = {
         }
 
         // 2. Prepare View
-        if (viewType === 'weekly_plan') {
-            // No need to change calendar view, we are already in Weekly Plan
+        if (viewType === 'weekly_plan' || viewType === 'dept_list') {
+            // No need to change calendar view
         } else if (this.state.calendar) {
             if (viewType === 'list') {
                 this.state.calendar.changeView('listMonth');
@@ -3452,7 +3640,7 @@ const App = {
 
         // 3. Inject Print-Only Header (ONLY FOR CALENDAR VIEWS)
         let printHeader = null;
-        if (viewType !== 'weekly_plan') {
+        if (viewType !== 'weekly_plan' && viewType !== 'dept_list') {
             printHeader = document.querySelector('.print-only-header');
             if (!printHeader) {
                 printHeader = document.createElement('div');
@@ -3487,7 +3675,7 @@ const App = {
         styleEl.textContent = `@page { size: ${size} ${orient}; margin: 10mm !important; }`;
 
         // 6. Force Layout for Print: Expand fully without internal scroll
-        if (viewType !== 'weekly_plan' && this.state.calendar) {
+        if (viewType !== 'weekly_plan' && viewType !== 'dept_list' && this.state.calendar) {
             this.state.calendar.setOption('height', 'auto');
             this.state.calendar.setOption('expandRows', false);
             this.state.calendar.updateSize();
@@ -3503,7 +3691,7 @@ const App = {
             if (styleEl) styleEl.remove();
             if (printHeader) printHeader.remove();
 
-            if (this.state.calendar && viewType !== 'weekly_plan') {
+            if (this.state.calendar && viewType !== 'weekly_plan' && viewType !== 'dept_list') {
                 this.state.calendar.setOption('height', '100%');
                 this.state.calendar.setOption('expandRows', true);
                 if (viewType === 'list') {
