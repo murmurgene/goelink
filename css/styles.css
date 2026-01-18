@@ -146,6 +146,14 @@ html {
     border-left: none !important;
     box-shadow: none !important;
 }
+
+/* Week Expansion Control: Hide/Show specific buffer rows */
+#calendar:not(.show-prev-week) .fc-row-prev-buffer {
+    display: none !important;
+}
+#calendar:not(.show-next-week) .fc-row-next-buffer {
+    display: none !important;
+}
 /* Ensure all day cells in a row have equal height and fill the row */
 .fc-daygrid-day-frame {
     height: 100% !important;

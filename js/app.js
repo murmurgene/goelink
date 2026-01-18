@@ -2075,16 +2075,17 @@ const App = {
 
         // 2. Setup FullCalendar
         const calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: window.innerWidth < 768 ? 'listWeek' : 'dayGridMonth',
+            initialView: window.innerWidth < 768 ? 'listWeek' : 'extendedMonth',
             locale: 'ko',
             headerToolbar: {
                 left: 'prev,next today',
                 center: 'title',
-                right: 'dayGridMonth,listWeek'
+                right: 'extendedMonth,listWeek'
             },
             buttonText: {
                 today: '오늘',
                 month: '월',
+                extendedMonth: '월',
                 list: '목록'
             },
             height: '100%', // Fill container for interior scroll on screen
@@ -2092,11 +2093,112 @@ const App = {
             dayMaxEvents: false,
             weekends: false, 
             firstDay: 1, // Start on Monday
-            fixedWeekCount: false, // Hide rows that don't contain any current month days
+            fixedWeekCount: false, 
+            views: {
+                extendedMonth: {
+                    type: 'dayGrid',
+                    dateIncrement: { months: 1 },
+                    // titleFormat: { year: 'numeric', month: 'long' }, // Removed to rely on JS override
+                    visibleRange: function(currentDate) {
+                        const firstDay = 1; // Monday start
+                        
+                        // 1. Determine the First Day of the Month
+                        const d = new Date(currentDate);
+                        const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+                        
+                        // 2. Find the First Day (Monday) of the week containing the 1st
+                        const dayOfWeek = (startOfMonth.getDay() - firstDay + 7) % 7; 
+                        const firstWeekStart = new Date(startOfMonth);
+                        firstWeekStart.setDate(firstWeekStart.getDate() - dayOfWeek);
+                        
+                        // 3. Start Date = First Week Start - 7 Days (Previous Buffer)
+                        const start = new Date(firstWeekStart);
+                        start.setDate(start.getDate() - 7);
+                        
+                        // 4. Determine End of Month
+                        const endOfMonth = new Date(startOfMonth.getFullYear(), startOfMonth.getMonth() + 1, 0);
+                        
+                        // 5. Find Last Day (Sunday) of the week containing the End of Month
+                        const dayOfWeekEnd = (endOfMonth.getDay() - firstDay + 7) % 7;
+                        
+                        const lastWeekEnd = new Date(endOfMonth);
+                        lastWeekEnd.setDate(lastWeekEnd.getDate() + (6 - dayOfWeekEnd));
+                        
+                        // 6. End Date = Last Week End + 8 Days (Next Buffer Week + 1 day for exclusive end)
+                        const end = new Date(lastWeekEnd);
+                        end.setDate(end.getDate() + 8);
+                        
+                        return { start, end };
+                    }
+                }
+            },
             
             // Dynamic Fetching on View Change
             datesSet: async (info) => {
+                // TAGGING FIRST: Prevent flicker by hiding rows immediately
+                const calEl = document.getElementById('calendar');
+                if (calEl) {
+                    const rows = Array.from(calEl.querySelectorAll('.fc-daygrid-body table tr'));
+                    if (rows.length > 0) {
+                        rows.forEach((row, idx) => {
+                            row.classList.remove('fc-row-prev-buffer', 'fc-row-next-buffer');
+                            if (idx === 0) row.classList.add('fc-row-prev-buffer');
+                            if (idx === rows.length - 1) row.classList.add('fc-row-next-buffer');
+                        });
+                    }
+                    
+                    const chkPrev = document.getElementById('chk-add-prev-week');
+                    const chkNext = document.getElementById('chk-add-next-week');
+                    if (chkPrev) calEl.classList.toggle('show-prev-week', chkPrev.checked);
+                    if (chkNext) calEl.classList.toggle('show-next-week', chkNext.checked);
+                    
+                    // CUSTOM TITLE LOGIC: Robust MutationObserver approach
+                    // Calculate expected title
+                    const middleTimestamp = (info.start.getTime() + info.end.getTime()) / 2;
+                    const middleDate = new Date(middleTimestamp);
+                    const year = middleDate.getFullYear();
+                    const month = middleDate.getMonth() + 1;
+                    const expectedTitle = `${year}년 ${month}월`;
+                    
+                    const titleEl = document.querySelector('.fc-toolbar-title');
+                    if (titleEl) {
+                        // 1. Set immediately
+                        if (titleEl.textContent !== expectedTitle) {
+                            titleEl.textContent = expectedTitle;
+                        }
+
+                        // 2. Enforce via Observer (prevent FC from overwriting)
+                        if (!this._titleObserver) { // Attach only once per instance logic
+                             this._titleObserver = new MutationObserver((mutations) => {
+                                if (titleEl.textContent !== expectedTitle) {
+                                    // Temporarily disconnect to avoid infinite loop
+                                    this._titleObserver.disconnect();
+                                    titleEl.textContent = expectedTitle;
+                                    this._titleObserver.observe(titleEl, { childList: true, characterData: true, subtree: true });
+                                }
+                             });
+                             this._titleObserver.observe(titleEl, { childList: true, characterData: true, subtree: true });
+                        } else {
+                            // Update the target text expected by the existing observer? 
+                            // Actually, simpler to just disconnect and reconnect with new closure if needed, 
+                            // OR simply let the datesSet re-run trigger the set. 
+                            // But since the closure captures `expectedTitle`, we should re-create the observer or update a shared ref.
+                            // Simpler: Disconnect old, create new.
+                            this._titleObserver.disconnect();
+                            this._titleObserver = new MutationObserver((mutations) => {
+                                if (titleEl.textContent !== expectedTitle) {
+                                    this._titleObserver.disconnect();
+                                    titleEl.textContent = expectedTitle;
+                                    this._titleObserver.observe(titleEl, { childList: true, characterData: true, subtree: true });
+                                }
+                            });
+                            this._titleObserver.observe(titleEl, { childList: true, characterData: true, subtree: true });
+                        }
+                    }
+                }
+
                 await this.refreshCalendarData(info.start, info.end);
+                
                 this.distributeVerticalSpace();
             },
 
@@ -2132,7 +2234,7 @@ const App = {
 
             windowResize: (view) => {
                 if (window.innerWidth < 768) calendar.changeView('listWeek');
-                else calendar.changeView('dayGridMonth');
+                else calendar.changeView('extendedMonth');
                 this.distributeVerticalSpace();
             },
             dateClick: (info) => {
@@ -2161,6 +2263,23 @@ const App = {
                 const isChecked = e.target.checked;
                 calendar.setOption('weekends', isChecked);
                 localStorage.setItem('calendar-show-weekends', isChecked);
+            });
+        }
+
+        // 5. Week Expansion Listeners
+        const chkPrev = document.getElementById('chk-add-prev-week');
+        const chkNext = document.getElementById('chk-add-next-week');
+        
+        if (chkPrev) {
+            chkPrev.addEventListener('change', (e) => {
+                calendarEl.classList.toggle('show-prev-week', e.target.checked);
+                this.distributeVerticalSpace();
+            });
+        }
+        if (chkNext) {
+            chkNext.addEventListener('change', (e) => {
+                calendarEl.classList.toggle('show-next-week', e.target.checked);
+                this.distributeVerticalSpace();
             });
         }
 
@@ -3905,8 +4024,19 @@ const App = {
             if (document.body.classList.contains('printing-mode')) return;
 
             // 1. Reset bottom heights to measure natural height
-            const bottomEls = calendarEl.querySelectorAll('.fc-daygrid-day-bottom');
-            bottomEls.forEach(el => el.style.height = '0px');
+            // Only touch visible rows to prevent hidden rows from expanding the scroller
+            const visibleRows = Array.from(calendarEl.querySelectorAll('.fc-daygrid-body table tr'))
+                               .filter(row => row.offsetParent !== null);
+            
+            if (visibleRows.length === 0) return;
+
+            const bottomEls = [];
+            visibleRows.forEach(row => {
+                row.querySelectorAll('.fc-daygrid-day-bottom').forEach(el => {
+                    el.style.height = '0px';
+                    bottomEls.push(el);
+                });
+            });
 
             // 2. Dynamic Measurement
             const windowHeight = window.innerHeight;
@@ -3918,7 +4048,7 @@ const App = {
             const availableTotal = windowHeight - rect.top;
 
             // Safety Margin (Buffer) to prevent accidental overflow
-            // Reduced from 30 to 10 to minimize the "gap" at the bottom
+            // Reduced to minimize the "gap" at the bottom
             const safetyMargin = 10; 
 
             // Sum up existing non-stretchable heights
@@ -3932,12 +4062,8 @@ const App = {
             
             const overhead = toolH + headH + footH + safetyMargin;
             
-            // Get calendar rows to sum up actual content height
-            const rows = document.querySelectorAll('.fc-daygrid-body table tr');
-            if (rows.length === 0) return;
-            
             let contentH = 0;
-            rows.forEach(row => {
+            visibleRows.forEach(row => {
                  contentH += row.offsetHeight;
             });
             
@@ -3945,7 +4071,7 @@ const App = {
             const remainder = availableTotal - (overhead + contentH);
 
             // 4. Distribute space
-            const rowCount = rows.length;
+            const rowCount = visibleRows.length;
             const heightPerWeek = Math.floor(remainder / rowCount);
             
             // USER REQUEST: Minimum 60px for cell bottom (memo space)
