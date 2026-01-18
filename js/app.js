@@ -2599,8 +2599,13 @@ const App = {
         if (selYear && selMonth) {
             // Check if year exists in options, if not add it (extended range handling)
             // For now assume range is sufficient or just set if exists
-            const y = start.getFullYear();
-            const m = start.getMonth() + 1;
+            // Sync Logic: Use Sunday of the first week to determine the "Week's Year/Month"
+            // This ensures weeks ending on the 1st of a month/year are attributed to that month/year.
+            const targetDate = new Date(start);
+            targetDate.setDate(targetDate.getDate() + 6); // Move to Sunday
+            
+            const y = targetDate.getFullYear();
+            const m = targetDate.getMonth() + 1;
             
             // Auto expand year range if needed? For now simple set.
             if (selYear.querySelector(`option[value="${y}"]`)) {
