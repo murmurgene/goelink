@@ -39,7 +39,7 @@
                     <select id="print-size"
                         class="w-full border rounded px-3 py-2 focus:ring-2 focus:ring-purple-500 bg-white">
                         <option value="A4">A4</option>
-                        <option value="B4">B4</option>
+                        <option value="B4" selected>B4</option>
                         <option value="A3">A3</option>
                     </select>
                 </div>
@@ -54,7 +54,7 @@
             </div>
 
             <!-- 3. Scaling -->
-            <div>
+            <div class="hidden">
                 <label class="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" id="print-scale" checked
                         class="rounded text-purple-600 focus:ring-purple-500">
