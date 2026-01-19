@@ -131,8 +131,9 @@ const App = {
                 }
             }
 
-            // Replace current state (initial load)
-            history.replaceState({ view: initialView }, '', '#' + initialView);
+            // Replace current state (initial load) - Keep URL clean
+            // If we loaded from a hash, we consume it and clean the URL
+            history.replaceState({ view: initialView }, '', window.location.pathname);
             this.navigate(initialView, true); // true = replace (don't push again)
 
             console.log("GOELink Ready.");
@@ -152,11 +153,11 @@ const App = {
 
         if (replace) {
             // Already handled state via replaceState in init usually, or we just loadView
-            // But if we want to force replace header:
-            history.replaceState({ view: viewName }, '', '#' + viewName);
+            // Update state object but keep URL clean (no hash)
+            history.replaceState({ view: viewName }, '', window.location.pathname);
         } else {
-            // Push new state
-            history.pushState({ view: viewName }, '', '#' + viewName);
+            // Push new state with View data, but keep URL clean
+            history.pushState({ view: viewName }, '', window.location.pathname);
         }
 
         this.loadView(viewName);
