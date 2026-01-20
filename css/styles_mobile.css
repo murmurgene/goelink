@@ -9,6 +9,10 @@
     #btn-print-modal, 
     #btn-print-direct, 
     .no-mobile-print,
+    #btn-print-modal, 
+    #btn-print-direct,
+    #btn-dept-print, /* Hide dept print button */
+    .no-mobile-print,
     .btn-print {
         display: none !important;
     }
@@ -18,6 +22,103 @@
     /* 2. Global Layout Adjustments */
     #main-content {
         padding: 8px 4px !important; /* Narrower padding for small screens */
+    }
+
+    /* 3. Dept List View Optimization */
+    /* Target the toolbar container specifically */
+    /* Structure: div.flex.items-center.justify-between > [LeftGroup(Title, Nav)] + [RightGroup(Calendar, Print)] */
+    /* We use :has() selector or robust child targeting if possible, but simpler is to assume structure */
+    
+    /* 3. Dept List View Optimization */
+    /* Target the toolbar container specifically */
+    
+    #dept-view-title {
+        white-space: nowrap !important;
+    }
+
+    /* Styles for the Dept Toolbar on Mobile */
+    h2#dept-view-title {
+        font-size: 0.95rem !important; /* Restored to previous size */
+        margin-right: auto !important; /* Push Nav to the right */
+        text-align: left !important;
+    }
+
+    /* Left Group Container (Title + Nav) - Now THE layout */
+    div:has(> #dept-view-title) {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        gap: 2px !important; 
+        width: 100% !important;
+        overflow: hidden !important; /* Hide scrollbars/arrows */
+    }
+
+    /* Main Container Flex adjustments */
+    div:has(> div > #dept-view-title) {
+        padding: 7px 7px !important; /* Increased horizontal padding (+3px) -> 7px 7px */
+        gap: 0 !important;
+        display: block !important; 
+    }
+
+    /* 1. Title: Row 1 Left */
+    /* Handled by margin-right: auto on #dept-view-title */
+
+    /* 2. Nav Group (Buttons + Selects): Right of Title */
+    #dept-view-title + div {
+        display: flex !important;
+        align-items: center !important;
+        gap: 4px !important; /* Reduced button gap but kept readable */
+        margin-left: 0 !important;
+        justify-content: flex-end !important; /* Align content to right */
+    }
+
+    /* Nav Buttons Compact */
+    #btn-dept-prev, #btn-dept-next {
+        padding: 0 !important;
+        width: 20px !important;
+        height: 24px !important;
+    }
+    
+    #btn-dept-today {
+        padding: 0 4px !important;
+        height: 24px !important;
+        font-size: 0.8rem !important;
+        line-height: 22px !important;
+    }
+
+    /* Dropdowns Compact */
+    #dept-nav-year, #dept-nav-month {
+        padding: 0 2px !important;
+        height: 24px !important;
+        font-size: 0.8rem !important;
+        background-position: right 2px center !important;
+    }
+
+    /* 3. Calendar Button: MOVED TO HEADER (Fixed Position) */
+    #btn-dept-calendar {
+        position: fixed !important;
+        top: 10px !important;
+        right: 75px !important; /* Increased from 60px to add gap */
+        z-index: 50 !important;
+        height: 24px !important;
+        padding: 0 6px !important;
+        font-size: 0.75rem !important;
+        background-color: white !important;
+        border: 1px solid #d1d5db !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+    }
+    
+    #btn-dept-calendar .material-symbols-outlined {
+        font-size: 16px !important;
+    }
+
+    /* Hide the original container hole if needed */
+    div:has(> #btn-dept-calendar) {
+        width: 0 !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
     }
 
     /* 3. Dept List View Optimization */
@@ -57,13 +158,13 @@
         font-size: 1.0rem !important; /* Smaller title */
     }
 
-    .fc-button {
+    .fc .fc-button {
         width: auto !important;
-        height: 20px !important; /* Reduced height further */
+        height: 24px !important; /* Increased back to 24px for alignment */
         min-height: 0 !important;
-        padding: 0 4px !important; /* Even tighter padding */
-        font-size: 0.75rem !important; /* Keep text size (approx 12px) */
-        line-height: 18px !important; /* Vertically center */
+        padding: 0 4px !important; /* Keep compact padding */
+        font-size: 0.75rem !important; /* Keep text size */
+        line-height: 22px !important; /* Vertically center */
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
