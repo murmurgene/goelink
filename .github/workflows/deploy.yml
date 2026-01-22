@@ -8,6 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: github.repository == 'pogokhi/goelink'
     permissions:
       contents: write
     steps:
