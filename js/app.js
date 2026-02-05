@@ -3552,9 +3552,8 @@ const App = {
             const shortName = d.dept_short || d.dept_name.substring(0, 2);
             headerHtml += `
             <th class="col-dept" style="padding: 0 4px; vertical-align: middle; box-shadow: inset 0 -5px 0 ${color}; height: 50px;">
-                    <div class="print:hidden">${d.dept_name}</div>
-                    <div class="hidden print:block">${shortName}</div>
-                </th>`;
+                <div>${d.dept_name}</div>
+            </th>`;
         });
         headerHtml += `</tr>`;
         thead.innerHTML = headerHtml;
@@ -4112,9 +4111,21 @@ const App = {
                 }
 
                 const finalDeptId = dept.id ? String(dept.id) : 'uncategorized';
+
+                // [PRINT FIX] Always Render Full Dept Name (Screen & Print)
+                const dName = dept.dept_name || '기타';
+
+                // Clean existing prefix if it exists (robustness against DB or Legacy)
+                let cleanTitle = s.title || '';
+                // Remove leading "◈ chars " pattern if present
+                cleanTitle = cleanTitle.replace(/^◈\s*\S+\s*/, '');
+
+                // User Request: Always display Full Name (dept_name) on both Screen and Print
+                const prefixHtml = `◈ ${dName} `;
+
                 events.push({
                     id: s.id,
-                    title: s.title,
+                    title: prefixHtml + cleanTitle,
                     start: s.start_date,
                     end: s.end_date,
                     backgroundColor: dept.dept_color || '#3788d8',
