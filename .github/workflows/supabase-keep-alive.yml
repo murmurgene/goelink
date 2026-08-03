@@ -10,6 +10,8 @@ jobs:
   ping-supabase:
     name: Ping Supabase Database
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Code
@@ -25,3 +27,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: node scripts/keep_alive.js
+
+      - name: Keep GitHub Actions Alive
+        uses: gautamkrishnar/keepalive-workflow@v1
